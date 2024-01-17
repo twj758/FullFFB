@@ -90,7 +90,7 @@
 (load_scale 1.0)			# suspension load coefficient
 (load_gamma 0.5)			# load linearity [0.2-2] (1 = linear)
 (adhesion_scale 1.0)		# loss of grip feel coefficient [0-1] (0=no feel, 1=total feel)
-(adhesion_gamma 3.0)		# adhesion linearity curve [0.3-4.0] (<1 -> grip loss is felt latter, >1 -> grip loss is felt sooner)
+(adhesion_gamma 3.2)		# adhesion linearity curve [0.3-4.0] (<1 -> grip loss is felt latter, >1 -> grip loss is felt sooner)
 (rack_damp damping_slider)	# damping [0-1]
 (tightness 0.15)			# force spread coefficent
 (bump_scale 0.75) 			# bumps and lateral weight transfer amplification factor [0-2]
@@ -105,7 +105,7 @@
 ###########################################################################################################
 # FX - generated effects (affected by FX slider)
 
-(scrub_scale 1.0)			# scrub feeling [0-3]
+(scrub_scale 1.8)			# scrub feeling [0-3]
 (gyro_scale 0.35) 			# gyroscopic effect
 (engine_scale_slow 2.6)		# engine feeling - low speed
 (engine_scale_fast 0.05) 	# engine feeling - high speed
@@ -405,7 +405,7 @@
 (ssv (+ (* 0.7 (/ sv dt)) (* 0.3 ssv)))
 
 (rack (+ rack (* rack_damp ssv) pseudo_gyro_force))
-
+ 
 # Smooth rack at standstill / very low speeds
 
 (slow_rack (/ (drag rack 0.0001 0.0) 2))
@@ -420,9 +420,256 @@
 
 (feel (lfb feel lfb_slider))
 
+
+###########################################################
+#suspention effects
+#############################################################
+
+(master_road                  2.0)				#Road bumps, details and suspension
+
+
+###########################################################
+#
+# Helper vars & prep
+#
+
+
+(kmh                (* (abs vel_mag) 3600 0.001))
+(speed_bias10       (max 0.0 (min 1.0 (/ (- kmh 3) 7.0))))
+(e                  2.71828182846)
+
+
+###########################################################
+#
+# Road features settings
+#
+
+(texture_scale                0.5)
+(micro_bumps_scale            0.375)
+(micro_bumps_smooth           0.008)
+(kerbs_surface_scale          8.5)
+(kerbs_surface_smooth         0.03)
+(kerb_bump_scale              0.25)	
+(large_track_bump_scale       1.4)		
+(large_offroad_bump_scale     2.3)		
+(bump_feel_follow_weight      0.50)
+
+(suspension_scale             0.30)		
+(rear_bump_scale              0.2)
+(rear_bump_hard               0.4)
+
+
+
+
+
+###########################################################
+#
+# Dynamic adjustment to bump feel based on car weight
+#
+
+(bump_weight_scale            (/ 800 (/ (+ corner_FL corner_FR) 9.8)))
+(bump_weight_scale            (+ 1 (* bump_feel_follow_weight (- bump_weight_scale 1))))
+(texture_scale                (* texture_scale bump_weight_scale))
+(micro_bumps_scale            (* micro_bumps_scale bump_weight_scale))
+(kerbs_surface_scale          (* kerbs_surface_scale bump_weight_scale))
+(kerb_bump_scale              (* kerb_bump_scale bump_weight_scale))
+(suspension_scale             (* suspension_scale bump_weight_scale))
+(rear_bump_scale              (* rear_bump_scale bump_weight_scale))
+
+
+
+
+
+
+
+
+
+###########################################################
+#
+# Build road slope details & bumps
+#
+
+(curb_started     curb_started)		#-1 means left, 1 means right. 0 means no curb active.
+(curb_dist        curb_dist)
+(curb_started     (if curb_started curb_started (if FL_bump_kerb -1 (if FR_bump_kerb 1 0))))
+(curb_dist        (if (+ FL_bump_kerb FR_bump_kerb) 0 curb_dist))
+(curb_started     (if (min 0 (- curb_dist 10)) curb_started 0))	#within 10m we keep same curb side
+(curb_dist        (+ curb_dist (* dt (/ kmh 3.6))))
+(boost_on_curb    9)
+
+(FL_bump_kerb_active FL_bump_kerb_active)
+(FR_bump_kerb_active FR_bump_kerb_active)
+(FL_bump_kerb_active (if FL_bump_kerb 1 FL_bump_kerb_active))
+(FR_bump_kerb_active (if FR_bump_kerb 1 FR_bump_kerb_active))
+(FL_bump_kerb_active (max 0 (- FL_bump_kerb_active (* 4 dt))))
+(FR_bump_kerb_active (max 0 (- FR_bump_kerb_active (* 4 dt))))
+
+(FL_bal           FL_bal)
+(FR_bal           FR_bal)
+(FL_bal           (* FL_bal (power 0.03 dt)))
+(FR_bal           (* FR_bal (power 0.03 dt)))
+(FL_bal           (max FL_bal FL_load))
+(FR_bal           (max FR_bal FR_load))
+
+(FL_load3         (if FL_bump_kerb_active FL_bal FL_load))
+(FR_load3         (if FR_bump_kerb_active FR_bal FR_load))
+
+(dist_time_mult   (max 0.5 (/ 50 (max 10 kmh))))
+(fast             (* 0.01 dist_time_mult))
+(slow             (* 0.02 dist_time_mult))
+(tyre_l           (- (smooth FL_load3 fast) (smooth FL_load3 slow)))
+(tyre_r           (- (smooth FR_load3 fast) (smooth FR_load3 slow)))
+(tyre_l           (/ tyre_l load_norm_wheel))
+(tyre_r           (/ tyre_r load_norm_wheel))
+(tyre_l           (max 0 (- tyre_l 0.05)))
+(tyre_r           (max 0 (- tyre_r 0.05)))
+
+(tyre_l           (* tyre_l (min 1 (/ (smooth FL_load3 fast) load_norm_wheel))))
+(tyre_r           (* tyre_r (min 1 (/ (smooth FR_load3 fast) load_norm_wheel))))
+
+(tyre_l           (* (* boost_on_curb FL_bump_kerb_active) 0.5 tyre_l))
+(tyre_r           (* (* boost_on_curb FR_bump_kerb_active) 0.5 tyre_r))
+(tyre_l           (* (if (min 0 tyre_l) -1 1) (- 1 (/ 1 (+ (abs (* 2 tyre_l)) 1)))))
+(tyre_r           (* (if (min 0 tyre_r) -1 1) (- 1 (/ 1 (+ (abs (* 2 tyre_r)) 1)))))
+
+(tyre_l           (* tyre_l (if (- curb_started 1) 1 -1)))	#curb started right side means multiply left side with -1
+(tyre_r           (* tyre_r (if (+ curb_started 1) 1 -1)))	#curb started left side means multiply right side with -1
+(slope_large      (spring (- tyre_r tyre_l) 100 0.3))
+
+(slope_large      (* linkage_sign (- 1 (/ 1 (+ 1 (abs slope_large)))) (if (min 0 slope_large) -1 1)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###########################################################
+#
+# Road features
+#
+
+(supress_micro_bumps 1)
+(supress_large_bumps 2)
+
+(left_texture_o   left_texture_o)
+(right_texture_o  right_texture_o)
+(left_texture     (* 0.002 (if (+ FL_bump_kerb FL_bump_offroad) 0 1) (- FL_load left_texture_o)))
+(right_texture    (* 0.002 (if (+ FR_bump_kerb FR_bump_offroad) 0 1) (- FR_load right_texture_o)))
+(left_texture_o   FL_load)
+(right_texture_o  FR_load)
+(texture          (+ left_texture right_texture))
+(texture          (smooth texture 0.003))
+(texture          (hard_clip texture 0.06))
+(texture          (if (min 0 (- (abs texture) 0.00010)) 0 (power texture (power (abs texture) 0.02))))
+(texture_vibes    (spring texture 6000 0.95))
+(texture          (+ texture (* 2.5 texture_vibes)))
+
+
+
+
+(left_details      (* 0.002 (- FL_load (smooth FL_load 0.008))))
+(right_details     (* 0.002 (- FR_load (smooth FR_load 0.008))))
+
+(left_details_pos  left_details_pos)
+(right_details_pos right_details_pos)
+(left_details_pos  (+ left_details_pos (* (- left_details left_details_pos) (power 0.001 dt))))
+(right_details_pos (+ right_details_pos (* (- right_details right_details_pos) (power 0.001 dt))))
+(left_details_pos  (max left_details_pos left_details))
+(right_details_pos (max right_details_pos right_details))
+(left_details      (spring left_details_pos  80000 0.1))
+(right_details     (spring right_details_pos 80000 0.1))
+(left_details      (* (power (- 1 (min 1 (abs left_details))) supress_micro_bumps) left_details))
+(right_details     (* (power (- 1 (min 1 (abs right_details))) supress_micro_bumps) right_details))
+(left_details      (* left_details (if FL_bump_offroad 0 1) (blend (smooth FL_bump_kerb 0.01) micro_bumps_scale kerbs_surface_scale)))
+(right_details     (* right_details (if FR_bump_offroad 0 1) (blend (smooth FR_bump_kerb 0.01) micro_bumps_scale kerbs_surface_scale)))
+(left_details      (smooth left_details  (blend (smooth FL_bump_kerb 0.01) micro_bumps_smooth kerbs_surface_smooth)))
+(right_details     (smooth right_details (blend (smooth FR_bump_kerb 0.01) micro_bumps_smooth kerbs_surface_smooth)))
+(kerbs_details     (- left_details right_details))
+(road_details      (blend (smooth (min 1 (+ FL_bump_kerb FR_bump_kerb)) 0.02) (+ left_details right_details) kerbs_details))
+
+
+
+
+
+(left_bump        (* 0.002 (- FL_load (smooth FL_load 0.015))))
+(right_bump       (* 0.002 (- FR_load (smooth FR_load 0.015))))
+(left_bump_pos    left_bump_pos)
+(right_bump_pos   right_bump_pos)
+(left_bump_pos    (+ left_bump_pos (* (- left_bump left_bump_pos) (power 0.001 dt))))
+(right_bump_pos   (+ right_bump_pos (* (- right_bump right_bump_pos) (power 0.001 dt))))
+(left_bump_pos    (max left_bump_pos left_bump))
+(right_bump_pos   (max right_bump_pos right_bump))
+(left_bump        (spring left_bump_pos  10000 0.1))
+(right_bump       (spring right_bump_pos 10000 0.1))
+(left_bump        (* (power (- 1 (min 1 (abs left_bump))) supress_large_bumps) left_bump))
+(right_bump       (* (power (- 1 (min 1 (abs right_bump))) supress_large_bumps) right_bump))
+(left_bump        (* left_bump (if FL_bump_kerb 0 (if FL_bump_offroad large_offroad_bump_scale large_track_bump_scale))))
+(right_bump       (* right_bump (if FR_bump_kerb 0 (if FR_bump_offroad large_offroad_bump_scale large_track_bump_scale))))
+(road_bumps       (blend (smooth (min 1 (+ FL_bump_kerb FR_bump_kerb)) 0.015) (+ left_bump right_bump) (- left_bump right_bump)))
+
+
+
+
+(left             (- (smooth FL_load 0.02) (smooth FL_load 0.03)))
+(right            (- (smooth FR_load 0.02) (smooth FR_load 0.03)))
+(suspension       (+ (* left mom_FL2) (* right mom_FR2 )))
+(suspension       (spring suspension 2500  1.0))
+(suspension       (* suspension 0.0002 3  suspension_scale))
+(as               (blend (min 1 (* (abs steering_angle_rack) 10)) 1 0))
+(as               (power as 0.7))
+(as               (smooth as 0.1)) 
+(suspension       (* suspension as))
+
+
+
+
+
+(left             (* 0.95 (- RL_load (smooth RL_load 0.005))))
+(right            (* 0.95 (- RR_load (smooth RR_load 0.005))))
+(left1            left1)
+(right1           right1)
+(left1            (* left1 (power 0.02 dt)))
+(right1           (* right1 (power 0.02 dt)))
+(left1            (max left left1))
+(right1           (max right right1))
+(left1            (+ left1  (* 0.7 (- (smooth RL_load 0.004) (smooth RL_load 0.008)))))
+(right1           (+ right1 (* 0.7 (- (smooth RR_load 0.004) (smooth RR_load 0.008)))))
+(rear             (+ (* left1 mom_FL2 (if FL_bump_offroad 0 1)) (* right1 mom_FR2 (if FR_bump_offroad 0 1))))
+(rear             (- rear (smooth rear 0.02)))
+(rear             (spring rear (* rear_bump_hard 10000) 1.0))
+(rear             (* rear 0.0026 rear_bump_scale))
+
+# LFB
+
+# road features lfb according to fx
+(lfb_apply        0.5)
+
+(slope_large      (* slope_large kerb_bump_scale))
+(slope_large2     (power slope_large (power (abs slope_large) (* -0.05))))
+(slope_large2     (lfb slope_large2 0.15))
+(slope_large      (blend lfb_apply slope_large slope_large2))
+
+(road_features    (+ slope_large suspension rear road_bumps road_details (* texture texture_scale 0.5)))
+
+(road_features    (blend speed_bias10 0.0 road_features))
+(road_features    (* road_features 1.1 master_road (* 2 (power fx 1.6))))
+
+
+
 # Combine rack and FX forces
 
-(output (+ rack (* feel fx)))
+(output (+ rack (* feel fx) (* road_features fx)))
 
 
 # Scaler for info, no affect on output --------------------
@@ -437,7 +684,7 @@
         1.0 1.0 1.0 1.0 1.0
         0.0
         0.0 0.0)
-
+			
 
 # Output ------------------------------------------------
 
