@@ -86,9 +86,9 @@
 (rack_load 1.5)				# rack response curve
 (load_scale 1.0)			# suspension load coefficient [0-1] (0=min, 1=max)
 (load_gamma 0.5)			# load linearity [0.2-2] (1 = linear)
-(adhesion_scale 1.0)			# loss of grip feel coefficient [0-1] (0=no feel, 1=max feel)
-(adhesion_gamma 3.2)			# adhesion linearity curve [0.3-4.0] (>1 -> grip loss is felt later, <1 -> grip loss is felt sooner)
-(rack_damp damping_slider)		# damping [0-1]
+(adhesion_scale 1.0)		# loss of grip feel coefficient [0-1] (0=no feel, 1=max feel)
+(adhesion_gamma 3.2)		# adhesion linearity curve [0.3-4.0] (>1 -> grip loss is felt later, <1 -> grip loss is felt sooner)
+(rack_damp damping_slider)	# damping [0-1]
 (tightness 0.15)			# force spread coefficent
 (bump_scale 0.75) 			# bumps and lateral weight transfer amplification factor [0-2]
 (lon_coef 0.5)				# longitudinal weight transfer coeficient [0-1] 
@@ -399,12 +399,11 @@
 # FX LFB
 (feel (lfb feel lfb_slider))
 
-
 ###########################################################
 #suspention effects
 #############################################################
 
-(master_road                  1.0)				#Road bumps, details and suspension
+(master_road                  2.0)				#Road bumps, details and suspension
 
 
 ###########################################################
@@ -605,13 +604,15 @@
 (slope_large      (blend lfb_apply slope_large slope_large2))
 
 #(road_features    (+ slope_large suspension rear road_bumps road_details (* texture texture_scale 0.5)))
-(road_features    (+ suspension )
+(road_features    road_bumps)
 (road_features    (blend speed_bias10 0.0 road_features))
 (road_features    (* road_features 1.1 master_road (* 2 (power fx 1.6))))
 
 
-# Combine rack ,road_features and FX forces
-(output (+ rack (* feel fx) road_features))
+
+
+# Combine rack and FX forces
+(output (+ rack road_features (* feel fx)))
 
 
 # Scaler for info, no affect on output --------------------
@@ -643,6 +644,8 @@
 (doom_check output)
 
 # Statistics output ---------------------------------------
+(MyHISTOGRAM (+ 0.5 MyVAR))
+(histogram MyHISTOGRAM)
 (histogram output)
 
 (info2 output)
