@@ -99,13 +99,12 @@
 (surface_amplitude 1.00)	# surface transition amplitude [0-3]
 (surface_smoothness 0.04)	# surface transition smoothness [0-0.1]
 (ABS_freq 0.4)				# ABS frequency [0.2-1.0]
-(ABS_gain 0.4)				# ABS gain [0-1] (0 will disable ABS effect)
+(ABS_gain 0.8)				# ABS gain [0-1] (0 will disable ABS effect)
 
 ###########################################################################################################
 # FX - generated effects (affected by FX slider)
 
 (scrub_scale 1.0)			# scrub feeling [0-3]
-(gyro_scale 0.35) 			# gyroscopic effect
 (engine_scale_slow 3.6)		# engine feeling - low speed
 (engine_scale_fast 0.05) 	# engine feeling - high speed
 
@@ -242,21 +241,6 @@
 (feel (+ tex engine_vibe))
 
 
-###########################################################################################################
-# Pseudo Gyro forces --------------------------------------
-
-#high speed effect
-(ratio_scale ( / 10.0 (max 10 steer_ratio)))
-(ac (power (min 1.0 (/ vel_mag 100)) 0.8))
-(mx (blend (max 0.0 (- (/ vel_mag 77) 0.3)) 0.0 ac))
-(ms (smooth steering_vel 0.005))
-(pseudo_gyro_force (* 5 ms mx ratio_scale gyro_scale))
-(pseudo_gyro_force (/ (tanh (* 15 pseudo_gyro_force)) 8))
-
-#adicional low speed force effect
-(low_speed_gyro (/ (tanh (* 15 ms)) 5))
-
-(pseudo_gyro_force (+ pseudo_gyro_force low_speed_gyro))
 
 
 ###########################################################################################################
@@ -400,8 +384,8 @@
 (lsp steering_pos)
 (ssv (+ (* 0.7 (/ sv dt)) (* 0.3 ssv)))
 
-(rack (+ rack (* rack_damp ssv) pseudo_gyro_force))
- 
+(rack (+ rack (* rack_damp ssv)))
+
 # Smooth rack at standstill / very low speeds
 
 (slow_rack (/ (drag rack 0.0001 0.0) 2))
@@ -437,6 +421,7 @@
 (rear_bump_hard               0.4)
 (supress_micro_bumps 1)
 (supress_large_bumps 2)
+(dt 0.0033333333333333333333333333333333333)
 
 ###########################################################
 #
