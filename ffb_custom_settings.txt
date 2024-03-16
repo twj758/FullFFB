@@ -87,7 +87,7 @@
 (micro_gamma 1.0)			# gamma for micro details
 (rack_load 1.5)				# rack response curve
 (load_scale 1.0)			# suspension load coefficient [0-1] (0=min, 1=max)
-(load_gamma 0.5)			# load linearity [0.2-2] (1 = linear)
+(load_gamma 1.0)			# load linearity [0.2-2] (1 = linear)
 (adhesion_scale 1.0)		# loss of grip feel coefficient [0-1] (0=no feel, 1=max feel)
 (adhesion_gamma 3.0)		# adhesion linearity curve [0.3-4.0] (>1 -> grip loss is felt later, <1 -> grip loss is felt sooner)
 (rack_damp 0)	# damping [0-1]
@@ -98,13 +98,13 @@
 (surface_duration 0.05)		# surface transition duration [0-0.1]
 (surface_amplitude 1.00)	# surface transition amplitude [0-3]
 (surface_smoothness 0.04)	# surface transition smoothness [0-0.1]
-(ABS_freq 0.4)				# ABS frequency [0.2-1.0]
-(ABS_gain 0.8)				# ABS amplitude [0-1] (0 will disable ABS effect)
+(ABS_freq 0.5)				# ABS frequency [0.2-1.0]
+(ABS_gain 0.9)				# ABS amplitude [0-1] (0 will disable ABS effect)
 
 ###########################################################################################################
 # FX - generated effects (affected by FX slider)
 
-(scrub_scale 2.0)			# scrub feeling [0-3]
+(scrub_scale 0.35)			# scrub feeling [0-3]
 (engine_scale_slow 3.6)		# engine feeling - low speed
 (engine_scale_fast 0.05) 	# engine feeling - high speed
 
@@ -121,14 +121,17 @@
 # Set to 0.0 to disable
 
 (scrub_scale_front 1.4)
-(scrub_scale_rear 2.0)
-
+#(scrub_scale_rear 2.0)
+(scrub_scale_rear 0.9)
 
 # Scrub lambda (inversely proportional to frequency of effect)
 # Higher values give lower freq. Best range 1.1 - 1.8
 
-(scrub_lambda_front 1.4)
-(scrub_lambda_rear 1.2)
+#(scrub_lambda_front 1.4)
+#(scrub_lambda_rear 1.2)
+
+(scrub_lambda_front 0.35)
+(scrub_lambda_rear 0.40)
 
 # Scrub spring settings
 
