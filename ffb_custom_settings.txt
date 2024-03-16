@@ -1,5 +1,5 @@
 ######################################################
-# NAME: FullFFB by JP v11
+# NAME: FullFFB by JP v12
 # Based on "Momentum Rack" and NuScorpii files
 # By JP (Joaquim Pereira)
 # 
@@ -18,12 +18,10 @@
 # In-game dials:  65-00-20-00
 # Moza R12 (75% max torque), linear/neutral settings
 #
-# v11
-# Substantially revised front axel algorithm (better tracking, better weight transfer feeling)
-# Substantially revised rear axel algorithm (to mimic rF2's manners)
-# No more pseudo-gyro forces (rack forces already capture that very well)
-# Several adjustments (including removed excessive oscillations)
-# (please, read notes - very important to achieve more pleasuse and less pain...)
+# v12
+# Increased front axel complexity/layers
+# Elimination of vibrations around the center
+# Code cleanup/simplification
 #
 # Still to improve/implement:
 # (no roadmap)
@@ -82,30 +80,25 @@
 # Rack - amplification of rack forces
 
 (macro_details 1.0)			# bigger suspension details [0-1.5]
-(micro_details 1.0)			# small suspension details [0-3.0]
+(micro_details 1.0)		# small suspension details [0-3.0]
 (macro_gamma 1.0)			# gamma for macro details
 (micro_gamma 1.0)			# gamma for micro details
-(rack_load 1.5)				# rack response curve
-(load_scale 1.0)			# suspension load coefficient [0-1] (0=min, 1=max)
-(load_gamma 1.0)			# load linearity [0.2-2] (1 = linear)
 (adhesion_scale 1.0)		# loss of grip feel coefficient [0-1] (0=no feel, 1=max feel)
 (adhesion_gamma 3.0)		# adhesion linearity curve [0.3-4.0] (>1 -> grip loss is felt later, <1 -> grip loss is felt sooner)
-(rack_damp 0)	# damping [0-1]
+(rack_damp damping_slider)	# damping [0-1]
 (bump_scale 0.75) 			# bumps and lateral weight transfer amplification factor [0-2]
 (lon_coef 0.5)				# longitudinal weight transfer coeficient [0-1]
 (lat_coef 0.4)				# lateral weight transfer coeficient [0-2]
 (vert_coef 0.5)				# vertical G-Forces effect [0-1]
-(surface_duration 0.05)		# surface transition duration [0-0.1]
-(surface_amplitude 1.00)	# surface transition amplitude [0-3]
-(surface_smoothness 0.04)	# surface transition smoothness [0-0.1]
-(ABS_freq 0.5)				# ABS frequency [0.2-1.0]
-(ABS_gain 0.9)				# ABS amplitude [0-1] (0 will disable ABS effect)
+(surface_amplitude 2.00)	# surface transition amplitude [0-3]
+(ABS_freq 0.4)				# ABS frequency [0.2-1.0]
+(ABS_gain 0.4)				# ABS amplitude [0-1] (0 will disable ABS effect)
 
 ###########################################################################################################
 # FX - generated effects (affected by FX slider)
 
-(scrub_scale 0.35)			# scrub feeling [0-3]
-(engine_scale_slow 3.6)		# engine feeling - low speed
+(scrub_scale 0.65)			# scrub feeling [0-3]
+(engine_scale_slow 2.6)		# engine feeling - low speed
 (engine_scale_fast 0.05) 	# engine feeling - high speed
 
 
@@ -121,17 +114,14 @@
 # Set to 0.0 to disable
 
 (scrub_scale_front 1.4)
-#(scrub_scale_rear 2.0)
-(scrub_scale_rear 0.9)
+(scrub_scale_rear 2.0)
+
 
 # Scrub lambda (inversely proportional to frequency of effect)
 # Higher values give lower freq. Best range 1.1 - 1.8
 
-#(scrub_lambda_front 1.4)
-#(scrub_lambda_rear 1.2)
-
-(scrub_lambda_front 0.35)
-(scrub_lambda_rear 0.40)
+(scrub_lambda_front 1.4)
+(scrub_lambda_rear 1.2)
 
 # Scrub spring settings
 
@@ -158,7 +148,8 @@
 # Getting tierods forces from physics engine ----------------------------------------------
 
 (rack_scaled (/ arm_force M_max_force_at_rack))
-(rack (* rack_scaled vehicle_ffb_gain 1.5))
+(rack (* 1.25 rack_scaled vehicle_ffb_gain))
+
 
 ###########################################################################################################
 # Scrub FX
@@ -238,7 +229,7 @@
 ###########################################################################################################
 # Rack ----------------------------------------------------
 
-# Dynamic Load gamma - increases rack force under high loads e.g. downforce or braking
+# Static front load
 (f_load_avg (/ (+ FL_load FR_load) 2.0))
 
 (counter (+ counter 1.0))
@@ -250,11 +241,9 @@
 (moving_avg (+ (* moving_avg (/ (- counter 1.0) counter)) (* f_load_avg (/ 1.0 counter))))
 
 (static_load moving_avg)
-(smooth_load_scaled (/ (- (smooth f_load_avg 0.1) (* 1.0 static_load)) static_load)) #normalized current front load
-(smooth_load_scaled (power smooth_load_scaled load_gamma))
-(smooth_load (max 0.0 (+ 0.5 (blend load_scale 0.0 smooth_load_scaled))))
 
-# adhesion curves
+###########################################################################################################
+# Adhesion curves
 (adhesion_front (- 1.0 (/ (+ FL_slide FR_slide) 2.0)))
 (adhesion_rear (- 1.0 (/ (+ RL_slide RR_slide) 2.0)))
 (adhesion_front (- 1 (power (- 1 adhesion_front) adhesion_gamma)))
@@ -263,6 +252,7 @@
 (adhesion_rear_scaled (blend adhesion_scale 1.0 adhesion_rear))
 
 
+###########################################################################################################
 # Split out detail levels
 (rack_fine_detail (- rack (smooth rack 0.003)))
 (rack_coarse_detail (smooth rack 0.02))
@@ -273,61 +263,47 @@
 (rack_fine_detail (power rack_fine_detail micro_gamma))
 (rack_medium_detail (power rack_medium_detail macro_gamma))
 
-
-# Gamma value
-(rack_gamma  (- 2.0 rack_load))
-
-# Sigmoid coefficients
-(sf 1)
-(sp 1.5)
-
-# Sigmoid load calculation
-(sig_load (/ sf (+ 1.0 (power 2.718 (* -4.0 (- smooth_load sp))))))
-(rg (+ 1.5 (power sig_load rack_gamma)))
-
 # Apply LFB
 (rack_coarse_lfb (lfb (* rack_coarse_detail adhesion_front_scaled) (+ lfb_slider 0.01)))
-
-# Apply dynamic load gamma to rack
-(rack_coarse_lfb (power rack_coarse_lfb (/ 1.0 rg)))
-
 
 
 ###########################################################################################################
 # JP's Effects 
 
-# longitudinal weight transfer
-(lonG_factor (+ 1 (max -0.2 (tanh (* 1.2 lon_G)))))
+# Dynamic load funtion
+(load_factor (- 1 (tanh (/ f_load_avg static_load))))
+(load_factor (max -0.4 load_factor))
+(rack_coarse_lfb (* 2 (tanh (/ rack_coarse_lfb (- 1.5 (/ load_factor 3))))))
+
+# longitudinal weight transfer factor
+(lonG_factor (+ 1 (max 0 (tanh (* 1.2 lon_G)))))
 
 # weight transfer
-(suspension_delta (tanh (/ (- FL_load FR_load) moving_avg)))
-(delta_load_wt_L (* 0.5 suspension_delta))
-(delta_load_wt_H (* 1.5 suspension_delta))
-(delta_load_wt (blend (- lonG_factor 1) delta_load_wt_L delta_load_wt_H))
-(latG_force (/ (tanh (* 15 lat_G)) 5))
-(wt_factor (smooth (- delta_load_wt latG_force) 0.05))
-(rack_coarse_lfb (+ rack_coarse_lfb (* wt_factor adhesion_front_scaled)))
+(suspension_delta (tanh (/ (- FL_load FR_load) static_load)))
+(delta_load_wt (* (+ 0.5 load_factor) suspension_delta adhesion_front_scaled))
+(latG_force (/ (tanh (* 10 lat_G)) 5)) #was 15/5
+(wt_factor (- (* delta_load_wt 0.65) latG_force))
+(rack_coarse_lfb (+ rack_coarse_lfb wt_factor))
+
+#front wheels delta
+(angle_delta (* 0.05 (- FR_angvel FL_angvel)))
+(angle_delta (/ (tanh (* 4 angle_delta)) 3))
+(rack_coarse_lfb (+ rack_coarse_lfb (* angle_delta adhesion_front_scaled)))
 
 # vertical bumps
 (vertG_accel (- vert_G (smooth vert_G 0.35)))	#G-Forces jerk amplitude
 (vertG_factor (* (power (abs vertG_accel) 2.0) (signo suspension_delta)))
 (vertG_factor (* vertG_factor vert_coef))
-(rack_coarse_lfb (+ rack_coarse_lfb (smooth vertG_factor 0.01)))
+(rack_coarse_lfb (+ rack_coarse_lfb (smooth vertG_factor 0.005)))
 
 # car rotation
-(rack_coarse_lfb (+ rack_coarse_lfb (* yaw_raw (+ 1 (- 1 adhesion_rear_scaled)) lonG_factor lat_coef)))
+(rack_coarse_lfb (+ rack_coarse_lfb (* (smooth yaw_raw 0.005) (+ 1 (- 1 adhesion_rear_scaled)) lonG_factor lat_coef)))
 
 # surface transitions
 (L_surfaces (- FL_bump_kerb (/ FL_bump_offroad 2)))
 (R_surfaces (- FR_bump_kerb (/ FR_bump_offroad 2)))
-(all_surfaces (- R_surfaces L_surfaces))
-(rack_coarse_lfb (+ rack_coarse_lfb (smooth (* surface_amplitude (- all_surfaces (smooth all_surfaces surface_duration))) surface_smoothness)))
-
-#tyre stretch
-(front_stretch (/ (+ FL_stretch FR_stretch) 2))
-(stretch_delta (- front_stretch (smooth front_stretch 0.3)))
-(stretch_factor (+ 1 (* 0.05 stretch_delta)))
-(rack_coarse_lfb (* rack_coarse_lfb stretch_factor))
+(surfaces_mov (spring (- R_surfaces L_surfaces) 20000 0.1 1.0))
+(rack_coarse_lfb (+ rack_coarse_lfb (* 0.65 surfaces_mov)))
 
 # offroad surface
 (is_offroad (/ (+ FL_bump_offroad FR_bump_offroad RL_bump_offroad RL_bump_offroad) 4))
@@ -346,121 +322,33 @@
 ###########################################################################################################
 # Combine rack and details
 
-(fine_details_amplifier (+ 0.5 (* micro_details (- 1 adhesion_front_scaled))))
+(fine_details_amplifier (+ 0.25 (* micro_details (- 1 adhesion_front_scaled))))
 (medium_details_amplifier (* 2.5 macro_details))
+
 (rack (+ rack_coarse_lfb (* rack_medium_detail medium_details_amplifier) (* rack_fine_detail fine_details_amplifier)))
-
-#(rack (* (signo rack) (power (abs (* 0.55 rack)) (* (- 1 gain) 2))))
-#(rack (/ rack 0.55))
-
 
 ###########################################################################################################
 # Construct Output
 
 # Rack damping
-
 (sv (smooth (- steering_pos lsp) 0.05))
 (lsp steering_pos)
 (ssv (+ (* 0.7 (/ sv dt)) (* 0.3 ssv)))
-
 (rack (+ rack (* rack_damp ssv)))
  
 # Smooth rack at standstill / very low speeds
-
-(slow_rack (/ (drag rack 0.0001 0.0) 2))
+(slow_rack (/ (drag rack 0.0001 0.0) 2.5))
 (slow_rack (smooth slow_rack 0.1))
 (ms (* 0.25 (smooth steering_vel 0.005)))
 (speed_bias (max 0.1 (min 1.0 (/ vel_mag 3.0))))
 (rack (blend speed_bias (+ slow_rack ms) rack))
 
 
-
 # FX LFB
 (feel (lfb feel lfb_slider))
 
-###########################################################
-#
-# Road features settings
-#
-(master_road                  (* damping_slider 4))				#Road bumps
-(kmh                (* (abs vel_mag) 3600 0.001))
-(speed_bias10       (max 0.0 (min 1.0 (/ (- kmh 3) 7.0))))
-(e                  2.71828182846)
-(large_track_bump_scale       1.4)		
-(large_offroad_bump_scale     2.3)		
-(bump_feel_follow_weight      0.50)
-(rear_bump_scale              0.2)
-(rear_bump_hard               0.4)
-(supress_micro_bumps 1)
-(supress_large_bumps 2)
-
-
-###########################################################
-#
-# Dynamic adjustment to bump feel based on car weight
-#
-
-(bump_weight_scale            (/ 800 (/ (+ corner_FL corner_FR) 9.8)))
-(bump_weight_scale            (+ 1 (* bump_feel_follow_weight (- bump_weight_scale 1))))
-(rear_bump_scale              (* rear_bump_scale bump_weight_scale))
-
-
-
-###########################################################
-#
-# Road Bumps
-#
-
-
-
-
-(left_bump        (* 0.002 (- FL_load (smooth FL_load 0.015))))
-(right_bump       (* 0.002 (- FR_load (smooth FR_load 0.015))))
-(left_bump_pos    left_bump_pos)
-(right_bump_pos   right_bump_pos)
-(left_bump_pos    (+ left_bump_pos (* (- left_bump left_bump_pos) (power 0.001 dt))))
-(right_bump_pos   (+ right_bump_pos (* (- right_bump right_bump_pos) (power 0.001 dt))))
-(left_bump_pos    (max left_bump_pos left_bump))
-(right_bump_pos   (max right_bump_pos right_bump))
-(left_bump        (spring left_bump_pos  10000 0.1))
-(right_bump       (spring right_bump_pos 10000 0.1))
-(left_bump        (* (power (- 1 (min 1 (abs left_bump))) supress_large_bumps) left_bump))
-(right_bump       (* (power (- 1 (min 1 (abs right_bump))) supress_large_bumps) right_bump))
-(left_bump        (* left_bump (if FL_bump_kerb 0 (if FL_bump_offroad large_offroad_bump_scale large_track_bump_scale))))
-(right_bump       (* right_bump (if FR_bump_kerb 0 (if FR_bump_offroad large_offroad_bump_scale large_track_bump_scale))))
-(road_bumps       (blend (smooth (min 1 (+ FL_bump_kerb FR_bump_kerb)) 0.015) (+ left_bump right_bump) (- left_bump right_bump)))
-
-
-
-
-(left             (* 0.95 (- RL_load (smooth RL_load 0.005))))
-(right            (* 0.95 (- RR_load (smooth RR_load 0.005))))
-(left1            left1)
-(right1           right1)
-(left1            (* left1 (power 0.02 dt)))
-(right1           (* right1 (power 0.02 dt)))
-(left1            (max left left1))
-(right1           (max right right1))
-(left1            (+ left1  (* 0.7 (- (smooth RL_load 0.004) (smooth RL_load 0.008)))))
-(right1           (+ right1 (* 0.7 (- (smooth RR_load 0.004) (smooth RR_load 0.008)))))
-(rear             (+ (* left1 mom_FL2 (if FL_bump_offroad 0 1)) (* right1 mom_FR2 (if FR_bump_offroad 0 1))))
-(rear             (- rear (smooth rear 0.02)))
-(rear             (spring rear (* rear_bump_hard 10000) 1.0))
-(rear             (* rear 0.0026 rear_bump_scale))
-
-
-
-(road_features    (+ road_bumps rear))
-(road_features    (blend speed_bias10 0.0 road_features))
-(road_features    (* road_features 1.1 master_road (* 2 (power fx 1.6))))
-
-
-
-
 # Combine rack and FX forces
-
-(output (+ rack road_features (* feel fx)))
-
+(output (+ rack (* feel fx)))
 
 
 # Scaler for info, no affect on output --------------------
@@ -477,23 +365,18 @@
 			
 
 # Output ------------------------------------------------
-
 (output (* output gain 0.50))
 
 
 # Lock stops ----------------------------------------------
-
 (custom_lock_stop 2.0)
 (stops (bumpstop output 0.15 0.5 0.15 1.0))
 (output (+ output (* stops custom_lock_stop)))
 
 # Clipping control ----------------------------------------------
-
 (doom_check output)
 
 # Statistics output ---------------------------------------
-(MyHISTOGRAM (+ 0.5 MyVAR))
-(histogram MyHISTOGRAM)
 (histogram output)
 
 (info2 output)
